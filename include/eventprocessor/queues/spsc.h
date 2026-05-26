@@ -7,7 +7,9 @@
 #include <new>
 #include <span>
 
-// TODO: for further optimizations https://rigtorp.se/ringbuffer/
+// TODO: for further optimizations
+// - https://rigtorp.se/ringbuffer/
+// - https://github.com/boonzy00/ringmpsc
 
 // For types constructed inside:
 //   sizeof(T) <= slot_size

@@ -2,7 +2,7 @@
 
 #include "event.h"
 #include "event_processor.h"
-#include "../queues/mpsc.h"
+#include <eventprocessor/queues/mpsc.h>
 
 #include <algorithm>
 #include <cassert>
