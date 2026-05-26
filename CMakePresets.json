@@ -1,0 +1,120 @@
+{
+  "version": 10,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 31,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "default-env",
+      "hidden": true,
+      "environment": {
+        "PROJECT_NAME": "eventprocessor"
+      }
+    },
+    {
+      "name": "default",
+      "inherits": "default-env",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "/usr/bin/clang++"
+      },
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../$env{PROJECT_NAME}-build/${presetName}",
+      "installDir": "${sourceDir}/../$env{PROJECT_NAME}-install/${presetName}"
+    },
+    {
+      "name": "default-asan",
+      "hidden": true,
+      "cacheVariables": {
+        "EVENTPROCESSOR_ENABLE_ASAN": true,
+        "EVENTPROCESSOR_ASAN_OPTIONS": "detect_leaks=0:detect_stack_use_after_return=1:symbolize=1"
+      },
+      "$comment": ["Leaks detection isn't supported on darwin arm64."]
+    },
+    {
+      "name": "default-ubsan",
+      "hidden": true,
+      "cacheVariables": {
+        "EVENTPROCESSOR_ENABLE_UBSAN": true,
+        "EVENTPROCESSOR_UBSAN_OPTIONS": "print_stacktrace=1"
+      }
+    },
+    {
+      "name": "default-leaks",
+      "hidden": true,
+      "cacheVariables": {
+        "EVENTPROCESSOR_ENABLE_LEAKS": true
+      }
+    },
+    {
+      "name": "default-tsan",
+      "hidden": true,
+      "cacheVariables": {
+        "EVENTPROCESSOR_ENABLE_TSAN": true
+      }
+    },
+    {
+      "name": "debug",
+      "inherits": "default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "EVENTPROCESSOR_ENABLE_COMPILER_COLORS": true
+      }
+    },
+    {
+      "name": "debug-asan",
+      "inherits": ["default-asan", "debug"]
+    },
+    {
+      "name": "debug-ubsan",
+      "inherits": ["default-ubsan", "debug"]
+    },
+    {
+      "name": "debug-leaks",
+      "inherits": ["default-leaks", "debug"]
+    },
+    {
+      "name": "debug-tsan",
+      "inherits": ["default-tsan", "debug"]
+    },
+    {
+      "name": "release",
+      "inherits": "default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_FLAGS_RELEASE": "-O3 -DNDEBUG -march=native",
+        "EVENTPROCESSOR_ENABLE_WERROR": true,
+        "EVENTPROCESSOR_ENABLE_COMPILER_COLORS": true
+      }
+    },
+    {
+      "name": "release-asan",
+      "inherits": ["default-asan", "release"]
+    },
+    {
+      "name": "release-ubsan",
+      "inherits": ["default-ubsan", "release"]
+    },
+    {
+      "name": "release-leaks",
+      "inherits": ["default-leaks", "release"]
+    },
+    {
+      "name": "release-tsan",
+      "inherits": ["default-tsan", "release"]
+    }
+  ],
+  "buildPresets": [
+    { "name": "debug", "configurePreset": "debug" },
+    { "name": "debug-asan", "configurePreset": "debug-asan" },
+    { "name": "debug-ubsan", "configurePreset": "debug-ubsan" },
+    { "name": "debug-leaks", "configurePreset": "debug-leaks" },
+
+    { "name": "release", "configurePreset": "release" },
+    { "name": "release-asan", "configurePreset": "release-asan" },
+    { "name": "release-ubsan", "configurePreset": "release-ubsan" },
+    { "name": "release-leaks", "configurePreset": "release-leaks" }
+  ]
+}
