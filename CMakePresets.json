@@ -111,10 +111,12 @@
     { "name": "debug-asan", "configurePreset": "debug-asan" },
     { "name": "debug-ubsan", "configurePreset": "debug-ubsan" },
     { "name": "debug-leaks", "configurePreset": "debug-leaks" },
+    { "name": "debug-tsan", "configurePreset": "debug-tsan" },
 
     { "name": "release", "configurePreset": "release" },
     { "name": "release-asan", "configurePreset": "release-asan" },
     { "name": "release-ubsan", "configurePreset": "release-ubsan" },
-    { "name": "release-leaks", "configurePreset": "release-leaks" }
+    { "name": "release-leaks", "configurePreset": "release-leaks" },
+    { "name": "release-tsan", "configurePreset": "release-tsan" }
   ]
 }

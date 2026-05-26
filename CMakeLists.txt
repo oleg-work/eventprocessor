@@ -25,6 +25,7 @@ if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
         test-sanity-check
         PRIVATE eventprocessor
                 eventprocessor-internal-compile-options
+                eventprocessor-internal-sanitize-options
     )
 
     enable_testing()
