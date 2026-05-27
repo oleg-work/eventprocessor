@@ -6,6 +6,7 @@
 #include <chrono>
 #include <iostream>
 #include <memory>
+#include <new>
 #include <thread>
 #include <vector>
 
@@ -121,28 +122,28 @@ int main() {
     std::atomic<size_t> producers_done{};
 
     struct ConsumerThreadStats {
-        std::atomic<size_t> processed_events{};
+        size_t processed_events{};
         // during execution
-        std::atomic<size_t> during_failed_polls{};
-        std::atomic<size_t> during_success_polls{};
+        size_t during_failed_polls{};
+        size_t during_success_polls{};
         // after we have collected exected events,
         // but before all producers are done
-        std::atomic<size_t> after_failed_polls{};
-        std::atomic<size_t> after_success_polls{};
+        size_t after_failed_polls{};
+        size_t after_success_polls{};
     } consumer_stats;
 
-    struct ProducerThreadStats {
-        std::atomic<size_t> processed_events{};
+    struct alignas(std::hardware_destructive_interference_size) ProducerThreadStats {
+        size_t processed_events{};
         // during execution
-        std::atomic<size_t> during_failed_polls{};
-        std::atomic<size_t> during_success_polls{};
+        size_t during_failed_polls{};
+        size_t during_success_polls{};
     };
 
-    struct ProducerEventStats {
+    struct alignas(std::hardware_destructive_interference_size) ProducerEventStats {
         struct Stats {
-            std::atomic<size_t> events_created{};
-            std::atomic<size_t> events_destroyed{};
-            std::atomic<size_t> events_processed{};
+            size_t events_created{};
+            size_t events_destroyed{};
+            size_t events_processed{};
         };
         Stats simple;
         Stats complex;
@@ -172,12 +173,12 @@ int main() {
                     reserved_event = event_processor->Reserve<Event>();
                 }
                 if (!reserved_event.IsValid()) {
-                    producer_stats.during_failed_polls.fetch_add(1, kRelaxed);
+                    ++producer_stats.during_failed_polls;
                     return 0;
                 }
                 event_processor->Commit(reserved_event.GetSequenceNumber());
-                producer_stats.during_success_polls.fetch_add(1, kRelaxed);
-                producer_stats.processed_events.fetch_add(1, kRelaxed);
+                ++producer_stats.during_success_polls;
+                ++producer_stats.processed_events;
                 return 1;
             };
             auto multi_event_submitter = [&event_processor, &producer_stats](size_t current_i) -> size_t {
@@ -185,11 +186,11 @@ int main() {
                 auto reserved_events_collection = event_processor->ReserveRange(range);
 
                 if (reserved_events_collection.empty()) {
-                    producer_stats.during_failed_polls.fetch_add(1, kRelaxed);
+                    ++producer_stats.during_failed_polls;
                     return 0;
                 }
 
-                producer_stats.during_success_polls.fetch_add(1, kRelaxed);
+                ++producer_stats.during_success_polls;
                 size_t total_reserved = 0;
                 for (auto& reserved_events : reserved_events_collection) {
                     for (size_t i = 0; i < reserved_events.Count(); ++i) {
@@ -198,7 +199,7 @@ int main() {
                     event_processor->Commit(reserved_events.GetSequenceNumber(), reserved_events.Count());
                     total_reserved += reserved_events.Count();
                 }
-                producer_stats.processed_events.fetch_add(total_reserved, kRelaxed);
+                producer_stats.processed_events += total_reserved;
                 return total_reserved;
             };
             for (size_t i = 0, j = 0; i < kEventsPerProducerThread; j = (j + 1) % 4) {
@@ -252,14 +253,14 @@ int main() {
             participants.fetch_add(1, kRelaxed);
 
             auto& cs = consumer_stats;
-            while (cs.processed_events.load(kRelaxed) < kExpectedProcessedEvents) {
+            while (cs.processed_events < kExpectedProcessedEvents) {
                 auto processed = event_processor->ProcessEvents();
                 if (processed == 0) {
-                    cs.during_failed_polls.fetch_add(1, kRelaxed);
+                    ++cs.during_failed_polls;
                 } else {
-                    cs.during_success_polls.fetch_add(1, kRelaxed);
+                    ++cs.during_success_polls;
                 }
-                cs.processed_events.fetch_add(processed, kRelaxed);
+                cs.processed_events += processed;
             }
 
             end_time_point = Now();
@@ -267,11 +268,11 @@ int main() {
             while (producers_done.load(kRelaxed) != kThreadCapacity) {
                 auto processed = event_processor->ProcessEvents();
                 if (processed == 0) {
-                    cs.after_failed_polls.fetch_add(1, kRelaxed);
+                    ++cs.after_failed_polls;
                 } else {
-                    cs.after_success_polls.fetch_add(1, kRelaxed);
+                    ++cs.after_success_polls;
                 }
-                cs.processed_events.fetch_add(processed, kRelaxed);
+                cs.processed_events += processed;
             };
         };
     consumer_task();
@@ -283,11 +284,11 @@ int main() {
     // Printing results
 
     std::cout << "Consumer:\n"
-              << "\tProcessedEvents: " << consumer_stats.processed_events.load(kRelaxed) << "\n"
-              << "\tDuringFailedPolls: " << consumer_stats.during_failed_polls.load(kRelaxed) << "\n"
-              << "\tDuringSuccessPolls: " << consumer_stats.during_success_polls.load(kRelaxed) << "\n"
-              << "\tAfterFailedPolls: " << consumer_stats.after_failed_polls.load(kRelaxed) << "\n"
-              << "\tAfterSuccessPolls: " << consumer_stats.after_success_polls.load(kRelaxed) << "\n"
+              << "\tProcessedEvents: " << consumer_stats.processed_events << "\n"
+              << "\tDuringFailedPolls: " << consumer_stats.during_failed_polls << "\n"
+              << "\tDuringSuccessPolls: " << consumer_stats.during_success_polls << "\n"
+              << "\tAfterFailedPolls: " << consumer_stats.after_failed_polls << "\n"
+              << "\tAfterSuccessPolls: " << consumer_stats.after_success_polls << "\n"
               << "\tSimpleEvent:\n"
               << "\tc " << CountingEvent<SimpleEvent>::Created()              //
               << " | d " << CountingEvent<SimpleEvent>::Destroyed()           //
@@ -316,63 +317,51 @@ int main() {
         auto& ps = producer_threads_stats[i];
         auto& pes = producer_event_stats[i];
         std::cout << "Producer: " << i << "\n"
-                  << "\tProcessedEvents: " << ps.processed_events.load(kRelaxed) << "\n"
-                  << "\tDuringFailedPolls: " << ps.during_failed_polls.load(kRelaxed) << "\n"
-                  << "\tDuringSuccessPolls: " << ps.during_success_polls.load(kRelaxed) << "\n"
+                  << "\tProcessedEvents: " << ps.processed_events << "\n"
+                  << "\tDuringFailedPolls: " << ps.during_failed_polls << "\n"
+                  << "\tDuringSuccessPolls: " << ps.during_success_polls << "\n"
                   << "\tSimpleEvent:\n"
-                  << "\tc " << pes.simple.events_created.load(kRelaxed)              //
-                  << " | d " << pes.simple.events_destroyed.load(kRelaxed)           //
-                  << " | p " << pes.simple.events_processed.load(kRelaxed) << "\n"   //
-                  << "\tComplexEvent:\n"                                             //
-                  << "\tc " << pes.complex.events_created.load(kRelaxed)             //
-                  << " | d " << pes.complex.events_destroyed.load(kRelaxed)          //
-                  << " | p " << pes.complex.events_processed.load(kRelaxed) << "\n"  //
-                  << "\tStatsEvent:\n"                                               //
-                  << "\tc " << pes.stats.events_created.load(kRelaxed)               //
-                  << " | d " << pes.stats.events_destroyed.load(kRelaxed)            //
-                  << " | p " << pes.stats.events_processed.load(kRelaxed) << "\n"    //
-                  << "\tTotalEvents:\n"                                              //
-                  << "\tc "
-                  << pes.simple.events_created.load(kRelaxed) + pes.complex.events_created.load(kRelaxed) +
-                         pes.stats.events_created.load(kRelaxed)  //
+                  << "\tc " << pes.simple.events_created                                                          //
+                  << " | d " << pes.simple.events_destroyed                                                       //
+                  << " | p " << pes.simple.events_processed << "\n"                                               //
+                  << "\tComplexEvent:\n"                                                                          //
+                  << "\tc " << pes.complex.events_created                                                         //
+                  << " | d " << pes.complex.events_destroyed                                                      //
+                  << " | p " << pes.complex.events_processed << "\n"                                              //
+                  << "\tStatsEvent:\n"                                                                            //
+                  << "\tc " << pes.stats.events_created                                                           //
+                  << " | d " << pes.stats.events_destroyed                                                        //
+                  << " | p " << pes.stats.events_processed << "\n"                                                //
+                  << "\tTotalEvents:\n"                                                                           //
+                  << "\tc " << pes.simple.events_created + pes.complex.events_created + pes.stats.events_created  //
                   << " | d "
-                  << pes.simple.events_destroyed.load(kRelaxed) + pes.complex.events_destroyed.load(kRelaxed) +
-                         pes.stats.events_destroyed.load(kRelaxed)  //
-                  << " | p "
-                  << pes.simple.events_processed.load(kRelaxed) + pes.complex.events_processed.load(kRelaxed) +
-                         pes.stats.events_processed.load(kRelaxed)
+                  << pes.simple.events_destroyed + pes.complex.events_destroyed + pes.stats.events_destroyed  //
+                  << " | p " << pes.simple.events_processed + pes.complex.events_processed + pes.stats.events_processed
                   << "\n\n";  //
     }
 
     std::cout << "General: \n"
-              << "\tTotalProcessedEvents/kExpectedProcessedEvents: " << consumer_stats.processed_events.load(kRelaxed)
-              << "/" << kExpectedProcessedEvents << "\n"
-              << "\tConsumer 1: \t"
-              << consumer_stats.processed_events.load(kRelaxed) / consumer_stats.during_success_polls.load(kRelaxed)
+              << "\tTotalProcessedEvents/kExpectedProcessedEvents: " << consumer_stats.processed_events << "/"
+              << kExpectedProcessedEvents << "\n"
+              << "\tConsumer 1: \t" << consumer_stats.processed_events / consumer_stats.during_success_polls
               << " events/poll; "
               << "\tfail rate: "
-              << consumer_stats.during_failed_polls.load(kRelaxed) * 100.0 /
-                     (consumer_stats.during_success_polls.load(kRelaxed) +
-                      consumer_stats.during_failed_polls.load(kRelaxed))
+              << consumer_stats.during_failed_polls * 100.0 /
+                     (consumer_stats.during_success_polls + consumer_stats.during_failed_polls)
               << "% \n";
 
     for (size_t i = 0; i < kThreadCapacity; ++i) {
         auto& ps = producer_threads_stats[i];
-        std::cout << "\tProducer " << i << ": \t"
-                  << ps.processed_events.load(kRelaxed) / ps.during_success_polls.load(kRelaxed) << " events/poll; "
+        std::cout << "\tProducer " << i << ": \t" << ps.processed_events / ps.during_success_polls << " events/poll; "
                   << "\tfail rate: "
-                  << ps.during_failed_polls.load(kRelaxed) * 100.0 /
-                         (ps.during_success_polls.load(kRelaxed) + ps.during_failed_polls.load(kRelaxed))
-                  << "% \n";
+                  << ps.during_failed_polls * 100.0 / (ps.during_success_polls + ps.during_failed_polls) << "% \n";
     }
 
     std::cout << "\tElapsed time: " << DiffNs(start_time_point, end_time_point) / 1'000'000 << " ms\n"
               << "\tThroughput: "
-              << (consumer_stats.processed_events.load(kRelaxed) * 1000.0) / DiffNs(start_time_point, end_time_point)
-              << "M events/s\n"
+              << (consumer_stats.processed_events * 1000.0) / DiffNs(start_time_point, end_time_point) << "M events/s\n"
               << "\tPerEvent: "
-              << DiffNs(start_time_point, end_time_point) /
-                     static_cast<double>(consumer_stats.processed_events.load(kRelaxed))
+              << DiffNs(start_time_point, end_time_point) / static_cast<double>(consumer_stats.processed_events)
               << " ns/event\n";
     auto event_stats = StatsEvent::GetStats();
     std::cout << "\tStatsEvent processing durations:\n"
